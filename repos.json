@@ -1,0 +1,25 @@
+{
+  "services": [
+    {
+      "name": "api",
+      "repo": "https://github.com/hector4like6gorillaz/fast-api-template",
+      "dir": "backend",
+      "env": ".env.localdev",
+      "env_path": "config"
+    },
+    {
+      "name": "workers",
+      "repo": "https://github.com/hector4like6gorillaz/workers-gcp-desacoplados",
+      "dir": "workers",
+      "env": ".env.localdev",
+      "env_path": "config"
+    },
+    {
+      "name": "frontend",
+      "repo": "https://github.com/hector4like6gorillaz/remix-react-vite",
+      "dir": "frontend",
+      "env": ".env.workspace",
+      "env_path": "."
+    }
+  ]
+}
