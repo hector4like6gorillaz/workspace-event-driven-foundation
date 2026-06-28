@@ -1,4 +1,4 @@
-name: workspace-gcp-poc-template
+name: workspace-event-driven-foundation
 
 # =========================================================
 # 🌍 WORKSPACE: GCP WORKERS LOCAL ENV
@@ -30,6 +30,17 @@ services:
       --host-port=0.0.0.0:8085
     ports:
       - "8085:8085"
+  
+  # 🐇 Pub/Sub (reemplazo de gcp en este caso)
+  nats:
+    image: nats:latest
+    container_name: infra-nats
+    command: ["--jetstream"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
 
   # 🪣 MinIO (S3 compatible storage)
   minio:
@@ -163,3 +174,4 @@ services:
 volumes:
   db_data:
   minio_data:
+  nats_data:

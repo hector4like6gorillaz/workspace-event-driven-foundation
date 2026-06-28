@@ -2,14 +2,14 @@
   "services": [
     {
       "name": "api",
-      "repo": "https://github.com/hector4like6gorillaz/fast-api-template",
+      "repo": "https://github.com/hector4like6gorillaz/fastapi-event-driven-template",
       "dir": "backend",
       "env": ".env.localdev",
       "env_path": "config"
     },
     {
       "name": "workers",
-      "repo": "https://github.com/hector4like6gorillaz/workers-gcp-desacoplados",
+      "repo": "https://github.com/hector4like6gorillaz/event-driven-workers",
       "dir": "workers",
       "env": ".env.localdev",
       "env_path": "config"
