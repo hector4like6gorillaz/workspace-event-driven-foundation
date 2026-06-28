@@ -1,4 +1,4 @@
-name: workspace-gcp-poc-template
+name: workspace-event-driven-foundation
 
 # =========================================================
 # 🌍 WORKSPACE: GCP WORKERS LOCAL ENV
@@ -20,16 +20,17 @@ services:
   # =========================================================
   # Servicios base del sistema (estado, mensajería, storage)
   # =========================================================
-
-  # 🐇 Pub/Sub Emulator (GCP local)
-  pubsub-emulator:
-    image: gcr.io/google.com/cloudsdktool/google-cloud-cli:latest
-    container_name: infra-pubsub-emulator
-    command: >
-      gcloud beta emulators pubsub start --project=poc-realidad-alterada
-      --host-port=0.0.0.0:8085
+  
+  # 🐇 Pub/Sub (reemplazo de gcp en este caso)
+  nats:
+    image: nats:latest
+    container_name: infra-nats
+    command: ["--jetstream"]
     ports:
-      - "8085:8085"
+      - "4222:4222"
+      - "8222:8222"
+    volumes:
+      - nats_data:/data
 
   # 🪣 MinIO (S3 compatible storage)
   minio:
@@ -85,7 +86,7 @@ services:
 
     depends_on:
       - db
-      - pubsub-emulator
+      - nats
 
     environment:
       PYTHONPATH: /app/src
@@ -128,7 +129,7 @@ services:
     volumes:
       - ./workers:/app
     depends_on:
-      - pubsub-emulator
+      - nats
       - db
       - minio
     env_file:
@@ -163,3 +164,4 @@ services:
 volumes:
   db_data:
   minio_data:
+  nats_data:
