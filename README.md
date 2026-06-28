@@ -8,18 +8,101 @@ La idea principal es tener un **template limpio, desacoplado y extensible** que 
 
 ## 🧠 Concepto
 
-Este workspace sigue una arquitectura basada en eventos:
+Este workspace sigue una arquitectura basada en eventos utilizando **NATS JetStream** como Event Bus.
 
-- Los servicios **no se comunican directamente**
-- Se comunican mediante **mensajes (Pub/Sub)**
-- Los **workers consumen eventos** y ejecutan lógica de negocio
+Los servicios no se comunican directamente entre sí; publican y consumen eventos a través de JetStream.
 
-Esto permite:
+La arquitectura se compone de cuatro conceptos principales:
 
-- Escalabilidad
-- Desacoplamiento
-- Tolerancia a fallos
+```
+Backend
+    │
+    ▼
+ Subject (Evento)
+    │
+    ▼
+ Stream (Persistencia)
+    │
+    ▼
+ Durable Consumer
+    │
+    ▼
+ Worker
+```
+
+### Componentes
+
+#### 🧱 Stream
+
+Es el contenedor donde JetStream almacena uno o varios eventos (Subjects).
+
+Ejemplo:
+
+```
+example_stream
+```
+
+Un mismo Stream puede contener múltiples eventos relacionados.
+
+---
+
+#### 📨 Subject
+
+Representa un evento específico del sistema.
+
+Ejemplos:
+
+```
+example.created
+files.uploaded
+vehicle.created
+vehicle.images.process
+```
+
+El backend únicamente publica mensajes sobre un Subject.
+
+---
+
+#### 👷 Durable Consumer
+
+Es el consumidor persistente encargado de leer los mensajes de un Subject.
+
+Cada worker posee normalmente su propio Durable Consumer.
+
+Ejemplo:
+
+```
+example-worker
+image-worker
+ocr-worker
+```
+
+Si un worker se reinicia, JetStream recuerda qué mensajes ya procesó.
+
+---
+
+#### ⚙️ Worker
+
+Los workers contienen la lógica de negocio.
+
+Se encargan de:
+
+- consumir eventos
+- procesar información
+- interactuar con Storage
+- guardar resultados en Base de Datos
+- confirmar (ACK) únicamente cuando el procesamiento fue exitoso
+
+---
+
+### Beneficios
+
+- Arquitectura desacoplada
+- Persistencia de eventos
+- Reintentos automáticos
+- Escalabilidad horizontal
 - Procesamiento asíncrono
+- Trazabilidad completa
 
 ---
 
@@ -66,10 +149,22 @@ Cada worker debe ser:
 
 El workspace levanta los siguientes servicios:
 
-### 🐇 Pub/Sub Emulator
+### 🐇 NATS JetStream
 
-- Simula Google Pub/Sub localmente
-- Puerto: `8085`
+Event Bus utilizado para la comunicación entre servicios.
+
+Puerto:
+
+```
+4222
+```
+
+Permite:
+
+- publicar eventos
+- persistir mensajes
+- crear Durable Consumers
+- realizar procesamiento asíncrono
 
 ### 🪣 MinIO (S3 local)
 
@@ -277,7 +372,7 @@ Genera:
 
 ✔️ Más rápido  
 ✔️ Más eficiente  
-✔️ Ideal para restaurar  
+✔️ Ideal para restaurar
 
 ---
 
@@ -326,20 +421,19 @@ Salida esperada:
 
 ## 🚀 Flujo recomendado
 
-1. Levantar proxy:
+1.  Levantar proxy:
 
         make proxy-up
 
-2. En otra terminal:
+2.  En otra terminal:
 
         make dump-cloud
 
-3. Restaurar en local:
+3.  Restaurar en local:
 
         make restore-cloud FILE=dumps/cloud_<timestamp>.dump
 
 ---
-
 
 ## 🔥 Servicios Disponibles
 
@@ -356,12 +450,50 @@ Salida esperada:
 
 ## 🧪 Flujo de Trabajo (Ejemplo)
 
-1. Backend recibe request
-2. Backend publica evento en Pub/Sub
-3. Worker consume evento
-4. Worker procesa job
-5. (Opcional) guarda resultado en DB o Storage
+## 🧪 Flujo de Trabajo (Ejemplo)
 
+```
+Frontend
+    │
+    ▼
+Backend API
+    │
+    ▼
+Sube archivos a Storage
+    │
+    ▼
+Publica evento
+
+Subject:
+example.created
+
+    │
+    ▼
+JetStream
+
+Stream:
+example_stream
+
+    │
+    ▼
+Durable Consumer
+
+example-worker
+
+    │
+    ▼
+Worker
+
+    │
+    ├── descarga archivos
+    ├── procesa información
+    ├── guarda resultados
+    └── ACK
+```
+
+El backend únicamente publica eventos.
+
+Los workers consumen dichos eventos de forma completamente desacoplada.
 ---
 
 ## ⚙️ Workers (Concepto)
@@ -372,24 +504,77 @@ Los workers viven en:
 workers/src/worker_system/workers/
 ```
 
+Cada worker representa un consumidor independiente de JetStream.
+
 Ejemplo:
 
-```bash
-workers/example/
-├── job.py
-└── main.py
+```
+example-worker
 ```
 
-### Cada worker debe:
+Escucha el Subject:
 
-- Escuchar una **subscription**
-- Procesar el mensaje
-- Hacer `ack` solo si fue exitoso
-- Ser tolerante a fallos
+```
+example.created
+```
+
+mediante el Durable Consumer:
+
+```
+example-worker
+```
+
+Todos los workers reutilizan la infraestructura común:
+
+- BaseWorker
+- NATS Consumer
+- Storage
+- Database
+- Logger
+
+Por lo tanto únicamente necesitan implementar la lógica del Job.
+
+### Cada worker debe
+
+- Escuchar uno o varios Subjects.
+- Procesar únicamente su responsabilidad.
+- Hacer ACK únicamente cuando el Job terminó correctamente.
+- Permitir que JetStream reprograme mensajes cuando ocurra un fallo.
+- Ser completamente independiente del Backend.
 
 ---
 
-## ➕ Agregar un Nuevo Worker
+## 📨 Streams, Subjects y Consumers
+
+Una diferencia importante respecto a Pub/Sub es que un Stream puede contener múltiples eventos.
+
+Ejemplo:
+
+```
+example_stream
+│
+├── example.created
+├── example.updated
+├── example.deleted
+└── example.failed
+```
+
+Cada Subject representa un evento independiente.
+
+Los workers consumen únicamente los Subjects que necesitan.
+
+```
+example-worker
+    │
+    └── example.created
+
+audit-worker
+    │
+    ├── example.created
+    └── example.deleted
+```
+
+Esto permite reutilizar un mismo Stream para múltiples procesos sin crear infraestructura adicional.
 
 ### 1. Crear estructura
 
@@ -436,17 +621,53 @@ worker-extractor:
 
 ---
 
-### 4. Naming convention
+## 🧠 Convención de Nombres
+
+Para mantener consistencia en todos los proyectos se utiliza la siguiente convención.
+
+### Streams
+
+Representan un dominio funcional.
 
 ```
-worker-<dominio>
+example_stream
+vehicles_stream
+users_stream
+payments_stream
 ```
 
-Ejemplos:
+---
 
-- worker-extractor
-- worker-ai
-- worker-image-processor
+### Subjects
+
+Representan eventos.
+
+```
+example.created
+example.updated
+
+vehicle.created
+vehicle.images.uploaded
+
+user.created
+
+payment.completed
+```
+
+---
+
+### Durable Consumers
+
+Representan quién procesa los eventos.
+
+```
+example-worker
+image-worker
+ocr-worker
+notification-worker
+```
+
+Esta convención permite escalar el sistema agregando nuevos eventos sin necesidad de crear nuevos Streams para cada uno.
 
 ---
 
@@ -463,12 +684,17 @@ Puedes extender el workspace agregando:
 
 ## 🧪 Testing Local
 
-Puedes probar el flujo:
+El flujo completo puede probarse de la siguiente manera:
 
-1. Crear topic/subscription desde backend
-2. Publicar mensaje
-3. Ver logs del worker
+1. Crear el Stream desde el Backend.
+2. Verificar que exista el Subject.
+3. Subir archivos al Storage.
+4. Publicar un evento.
+5. Verificar que el Worker reciba el mensaje.
+6. Confirmar que el Job se registre en Base de Datos.
+7. Revisar que el ACK sea enviado únicamente después de finalizar el procesamiento.
 
+Todo el flujo puede ejecutarse completamente en entorno local utilizando Docker Compose.
 ---
 
 ## 📦 Persistencia
